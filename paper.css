@@ -508,7 +508,7 @@ table.cmp textarea { font-family: var(--font-serif); font-size: 14px; }
    Accueil : une page de garde, sans colonne, avec l'arc du récit animé
    ===================================================================== */
 body.is-home .sidebar, body.is-home .menu-toggle { display: none !important; }
-body.is-home #btnSave, body.is-home #btnUndo, body.is-home #btnRedo, body.is-home #saveState, body.is-home #btnExport, body.is-home .tb-center .tb-sep, body.is-home #tbTitle { display: none !important; }
+body.is-home #btnSave, body.is-home #saveState, body.is-home #btnExport, body.is-home .tb-center .tb-sep, body.is-home #tbTitle { display: none !important; }
 body.is-home .titlebar { background: transparent; box-shadow: none; }
 body.is-home .tb-center { opacity: 0; pointer-events: none; }
 .welcome { max-width: 1040px; margin: 0 auto; padding: clamp(28px, 7vh, 80px) 24px 60px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0; }
