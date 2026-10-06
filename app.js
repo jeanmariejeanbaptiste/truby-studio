@@ -369,7 +369,8 @@ const App = (() => {
     renderSidebar();
     const main = $('#main');
     main.className = 'main' + (ui.view === 'scenario' && p ? ' full' : '');
-    if (!p || ui.view === 'home') { main.innerHTML = renderHome(); afterRender(main); return; }
+    document.body.classList.toggle('is-home', !p || ui.view === 'home');
+    if (!p || ui.view === 'home') { main.innerHTML = renderHome(); afterRender(main); startHomeAnim(main); return; }
     const r = { premisse: renderPremisse, structure: renderStructure, personnages: renderPersonnages, debat: renderDebat, univers: renderUnivers, symboles: renderSymboles, intrigue: renderIntrigue, tissage: renderTissage, export: renderExport }[ui.view];
     if (ui.view === 'scenario') { Editor.render(main); return; }
     main.innerHTML = r ? r(p) : '';
@@ -616,17 +617,61 @@ const App = (() => {
   /* ---------------- Accueil / projets ---------------- */
   function renderHome() {
     const list = db.projects.slice().sort((a, b) => b.updated - a.updated);
-    return `<div class="home"><div class="eyebrow">Atelier d'écriture</div><h1>Construire une histoire comme le conseille John Truby</h1>
-      <p class="lead">De la prémisse au scénario final : structure en 7 étapes ou en 22 étapes, réseau de personnages, débat moral, univers du récit, symboles, intrigue, tissage des scènes, puis l'écriture dans un éditeur de scénario.</p>
-      <div class="home-actions"><button class="btn primary" data-new>${ICON.plus}Nouveau projet</button><button class="btn" data-open-file>${ICON.open}Ouvrir un fichier .truby</button><button class="btn ghost" data-sample>Charger l'exemple « Casablanca »</button></div>
-      <div class="dropzone-hint">Astuce : vous pouvez aussi glisser-déposer un fichier .truby n'importe où dans la fenêtre.${storageOk ? '' : ' <b>Le stockage du navigateur est indisponible : enregistrez régulièrement le fichier projet.</b>'}</div>
-      ${list.length ? `<div class="projects">${list.map(p => {
+    const steps = ['Faiblesses et besoin', 'Désir', 'Adversaire', 'Plan', 'Confrontation finale', 'Prise de conscience', 'Nouvel équilibre'];
+    return `<div class="welcome">
+      <header class="w-hero">
+        <div class="w-eyebrow">Atelier d'écriture · d'après « L'Anatomie du scénario » de John Truby</div>
+        <h1 class="w-title">Truby Studio</h1>
+        <p class="w-lead">De la prémisse au scénario final, une étape après l'autre.</p>
+      </header>
+      <figure class="w-arc" aria-hidden="true">
+        <svg viewBox="0 0 1000 300" preserveAspectRatio="xMidYMid meet">
+          <path class="w-arc-base" d="M30 200 C 120 210, 190 250, 280 236 S 430 150, 520 172 S 640 250, 720 196 S 860 60, 970 70"/>
+          <path class="w-arc-ink" id="wArcPath" d="M30 200 C 120 210, 190 250, 280 236 S 430 150, 520 172 S 640 250, 720 196 S 860 60, 970 70"/>
+          <g id="wArcDots">${steps.map((t, i) => `<g class="w-dot" style="--i:${i}"><circle r="6"/><text>${esc(t)}</text></g>`).join('')}</g>
+        </svg>
+        <figcaption>Les sept étapes clefs de la structure narrative</figcaption>
+      </figure>
+      <div class="w-type"><span class="w-film" id="wFilm"></span><span class="w-premise"><span id="wTyped"></span><i class="w-caret"></i></span></div>
+      <div class="w-actions">
+        <button class="btn primary w-main" data-new>${ICON.plus}Commencer une histoire</button>
+        <button class="btn" data-open-file>${ICON.open}Ouvrir un fichier</button>
+        <button class="btn ghost" data-sample>Découvrir l'exemple « Casablanca »</button>
+      </div>
+      ${storageOk ? '' : '<p class="w-warn">Le stockage du navigateur est indisponible : enregistrez régulièrement le fichier projet.</p>'}
+      ${list.length ? `<section class="w-projects"><h2>Reprendre l'écriture</h2><div class="projects">${list.map(p => {
         const done = SECTION_IDS.filter(id => id !== 'export' && p.progress[id]).length;
         return `<div class="pcard" data-openp="${p.id}" tabindex="0" role="button"><h3>${esc(p.title)}</h3><p>${esc(p.premisse.premisse || 'Pas encore de prémisse.')}</p>
         <div class="pm"><span>${done}/9 étapes · ${p.scenes.length} scène${p.scenes.length > 1 ? 's' : ''} · ${fmtDate(p.updated)}</span><span class="acts">
         <button class="ic" data-prename="${p.id}" title="Renommer">${ICON.edit}</button><button class="ic" data-pdup="${p.id}" title="Dupliquer">${ICON.dup}</button><button class="ic" data-pfile="${p.id}" title="Enregistrer le fichier projet">${ICON.file}</button><button class="ic" data-pdel="${p.id}" title="Supprimer">${ICON.trash}</button></span></div></div>`;
-      }).join('')}</div>` : `<div class="empty" style="margin-top:26px">Aucun projet pour l'instant. Commencez par « Nouveau projet », ou chargez l'exemple pour voir l'outil rempli.</div>`}
-      <div class="process">${T.SECTIONS.map(s => `<div><span>${s.n} · ${esc(s.ch)}</span><b>${esc(s.short)}</b></div>`).join('')}</div></div>`;
+      }).join('')}</div></section>` : ''}
+      <footer class="w-foot">Glissez un fichier .truby n'importe où pour l'ouvrir · <button class="w-link" data-open-settings>Paramètres</button></footer>
+    </div>`;
+  }
+  /* animations de l'accueil : l'arc du récit se dessine, les prémisses de Truby s'écrivent à la machine */
+  let homeTimer = null;
+  function startHomeAnim(root) {
+    clearTimeout(homeTimer);
+    const path = $('#wArcPath', root); if (!path) return;
+    const len = path.getTotalLength(); path.style.setProperty('--len', len);
+    const at = [0.03, 0.2, 0.37, 0.52, 0.66, 0.83, 0.985];
+    $$('.w-dot', root).forEach((g, i) => {
+      const pt = path.getPointAtLength(len * at[i]); g.setAttribute('transform', `translate(${pt.x.toFixed(1)} ${pt.y.toFixed(1)})`);
+      const tx = $('text', g); const above = [true, false, true, false, false, true, true][i]; tx.setAttribute('y', above ? -16 : 30); if (i === 5) tx.setAttribute('x', -14); tx.setAttribute('text-anchor', i === 0 ? 'start' : i >= 5 ? 'end' : 'middle');
+    });
+    const ex = ((T.PREMISSE.find(g => g.fields.some(f => f.k === 'premisse')) || { fields: [] }).fields.find(f => f.k === 'premisse') || {}).ex || [];
+    const film = $('#wFilm', root), out = $('#wTyped', root); if (!ex.length || !out) return;
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let k = 0, n = 0, phase = 'type';
+    const tick = () => {
+      if (!out.isConnected) return;
+      const [title, text] = ex[k % ex.length];
+      if (still) { film.textContent = title; out.textContent = text; k++; homeTimer = setTimeout(tick, 7000); return; }
+      if (phase === 'type') { film.textContent = title; n++; out.textContent = text.slice(0, n); if (n >= text.length) { phase = 'hold'; homeTimer = setTimeout(tick, 3200); return; } homeTimer = setTimeout(tick, 32 + Math.random() * 40); return; }
+      if (phase === 'hold') { phase = 'erase'; }
+      if (phase === 'erase') { n = Math.max(0, n - 4); out.textContent = text.slice(0, n); if (!n) { phase = 'type'; k++; homeTimer = setTimeout(tick, 500); return; } homeTimer = setTimeout(tick, 14); }
+    };
+    tick();
   }
   function newProjectDialog() {
     modal({ title: 'Nouveau projet', html: `<label>Titre<input class="in" id="npTitle" placeholder="Titre de travail"></label><label>Auteur<input class="in" id="npAuthor" placeholder="Votre nom"></label>`,

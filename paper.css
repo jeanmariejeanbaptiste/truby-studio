@@ -503,3 +503,52 @@ table.cmp textarea { font-family: var(--font-serif); font-size: 14px; }
 @media (max-width: 860px) { .set-test-row { padding-left: 0; } }
 .prov-grid { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 @media (max-width: 860px) { .prov-grid { grid-auto-flow: row; grid-template-columns: minmax(0, 1fr); } }
+
+/* =====================================================================
+   Accueil : une page de garde, sans colonne, avec l'arc du récit animé
+   ===================================================================== */
+body.is-home .sidebar, body.is-home .menu-toggle { display: none !important; }
+body.is-home #btnSave, body.is-home #btnUndo, body.is-home #btnRedo, body.is-home #saveState, body.is-home #btnExport, body.is-home .tb-center .tb-sep, body.is-home #tbTitle { display: none !important; }
+body.is-home .titlebar { background: transparent; box-shadow: none; }
+body.is-home .tb-center { opacity: 0; pointer-events: none; }
+.welcome { max-width: 1040px; margin: 0 auto; padding: clamp(28px, 7vh, 80px) 24px 60px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0; }
+.w-eyebrow { font-family: var(--font-hand); font-size: 20px; color: var(--brick); }
+.w-title { font-family: var(--font-display); font-weight: 400; font-size: clamp(54px, 10vw, 112px); line-height: .95; margin: 8px 0 10px; letter-spacing: -.01em; filter: url(#ink); color: var(--fg); }
+.w-lead { margin: 0; font-size: clamp(17px, 2vw, 20px); color: var(--fg-2); font-style: italic; }
+.w-arc { width: 100%; margin: clamp(18px, 4vh, 40px) 0 4px; }
+.w-arc svg { width: 100%; height: auto; display: block; overflow: visible; }
+.w-arc figcaption { font-family: var(--font-hand); font-size: 17px; color: var(--fg-3); margin-top: 2px; }
+.w-arc-base { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 2 7; stroke-linecap: round; }
+.w-arc-ink { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; filter: url(#ink);
+  stroke-dasharray: var(--len, 1200); stroke-dashoffset: var(--len, 1200); animation: w-draw 11s cubic-bezier(.45,.05,.35,1) infinite; }
+@keyframes w-draw { 0% { stroke-dashoffset: var(--len, 1200); opacity: 1; } 45% { stroke-dashoffset: 0; opacity: 1; } 82% { stroke-dashoffset: 0; opacity: 1; } 94%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+.w-dot circle { fill: var(--surface); stroke: var(--brick); stroke-width: 2; }
+.w-dot text { font-family: var(--font-hand); font-size: 22px; fill: var(--fg-2); }
+.w-dot { opacity: 0; animation: w-dot 11s ease infinite; animation-delay: calc(var(--i) * .66s + .2s); }
+.w-dot circle, .w-dot text { transform-box: fill-box; }
+@keyframes w-dot { 0% { opacity: 0; } 5% { opacity: 1; } 76% { opacity: 1; } 86%, 100% { opacity: 0; } }
+.w-type { min-height: 4.6em; max-width: 760px; margin: 18px auto 6px; display: grid; gap: 4px; }
+.w-film { font-family: var(--font-hand); font-size: 18px; color: var(--sepia); }
+.w-premise { font-family: var(--font-script); font-size: clamp(15px, 1.8vw, 18px); line-height: 1.55; color: var(--fg); }
+.w-caret { display: inline-block; width: 2px; height: 1.1em; margin-left: 2px; vertical-align: -0.18em; background: var(--accent); animation: w-blink 1s steps(1) infinite; }
+@keyframes w-blink { 50% { opacity: 0; } }
+.w-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 22px; }
+.w-actions .w-main { font-size: 16px; padding: 10px 22px; }
+.w-warn { color: var(--brick); font-style: italic; font-size: 14px; }
+.w-projects { width: 100%; margin-top: clamp(40px, 8vh, 72px); text-align: left; }
+.w-projects h2 { font-family: var(--font-display); font-weight: 400; font-size: 26px; margin: 0 0 4px; filter: url(#ink); }
+.w-projects .projects { margin-top: 12px; }
+.w-foot { margin-top: 48px; font-size: 13px; color: var(--fg-3); }
+.w-link { border: 0; background: none; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+@media (max-width: 640px) {
+  .w-dot text { display: none; }
+  .w-dot circle { r: 9; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .w-arc-ink { animation: none; stroke-dashoffset: 0; }
+  .w-dot { animation: none; opacity: 1; }
+  .w-caret { animation: none; }
+}
+.w-dot text { font-size: 19px; font-weight: 500; fill: var(--fg-2); stroke: var(--bg); stroke-width: 6px; stroke-linejoin: round; paint-order: stroke; }
+.w-type { min-height: 6.6em; align-content: start; }
+@media (max-width: 640px) { .w-type { min-height: 8.4em; } }
