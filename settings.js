@@ -11,8 +11,8 @@ const Settings = (() => {
   const KEY = 'trubyStudio.settings', THEME_KEY = 'trubyStudio.theme', USAGE_KEY = 'trubyStudio.usage';
   const defaults = () => ({
     theme: 'jour',
-    ai: { provider: 'claude', tier: 'default', effort: 'moyen', extra: '' },
-    api: { preset: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', apiKey: '', remember: true },
+    ai: { provider: window.claude ? 'claude' : 'off', tier: 'default', effort: 'moyen', extra: '' },
+    api: { preset: 'anthropic', baseUrl: 'https://api.anthropic.com', model: 'claude-opus-5-5', apiKey: '', remember: true },
     limits: { session: 0, week: 0 }
   });
   let cfg = defaults();
@@ -21,6 +21,8 @@ const Settings = (() => {
     cfg = { ...cfg, ...raw, ai: { ...cfg.ai, ...(raw.ai || {}) }, api: { ...cfg.api, ...(raw.api || {}) }, limits: { ...cfg.limits, ...(raw.limits || {}) } };
     const th = localStorage.getItem(THEME_KEY); if (th) cfg.theme = th;
   } catch (e) {}
+  /* hors de claude.ai, le compte claude.ai n'est jamais utilisé : Claude ne se branche que par une clé API */
+  if (!window.claude && cfg.ai.provider === 'claude') cfg.ai.provider = 'off';
   function save() {
     try {
       const out = JSON.parse(JSON.stringify(cfg)); if (!cfg.api.remember) out.api.apiKey = '';
@@ -55,6 +57,7 @@ const Settings = (() => {
 
   /* ---------- fournisseurs d'IA par API (format compatible OpenAI) ---------- */
   const PRESETS = [
+    { id: 'anthropic', name: 'Claude (Anthropic)', base: 'https://api.anthropic.com', model: 'claude-opus-5-5', keys: 'https://console.anthropic.com/settings/keys', kind: 'anthropic' },
     { id: 'deepseek', name: 'DeepSeek', base: 'https://api.deepseek.com/v1', model: 'deepseek-chat', keys: 'https://platform.deepseek.com/api_keys' },
     { id: 'openai', name: 'ChatGPT (OpenAI)', base: 'https://api.openai.com/v1', model: '', keys: 'https://platform.openai.com/api-keys' },
     { id: 'mistral', name: 'Mistral AI', base: 'https://api.mistral.ai/v1', model: 'mistral-large-latest', keys: 'https://console.mistral.ai/api-keys' },
@@ -69,6 +72,7 @@ const Settings = (() => {
   const inClaudeAi = () => !!(window.claude && typeof window.claude.use === 'function');
   function providerName() {
     if (cfg.ai.provider === 'off') return 'IA';
+    if (cfg.ai.provider === 'api' && preset().id === 'anthropic') return 'Claude';
     if (cfg.ai.provider === 'api') return preset().id === 'custom' ? (cfg.api.model || 'IA') : preset().name.replace(/ \(.*\)$/, '');
     return 'Claude';
   }
@@ -113,8 +117,51 @@ const Settings = (() => {
       throw err(e && e.code || 'upstream_error', e && e.message || 'Erreur', e && e.text);
     }
   }
+  /* Claude par clé API : SDK officiel @anthropic-ai/sdk, chargé seulement quand on en a besoin */
+  let sdkP = null;
+  function loadSdk() {
+    if (window.Anthropic) return Promise.resolve(window.Anthropic);
+    return sdkP || (sdkP = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'vendor/anthropic-sdk.js'; sc.onload = () => window.Anthropic ? res(window.Anthropic) : rej(err('config', 'Module Claude introuvable.')); sc.onerror = () => { sdkP = null; rej(err('network', 'Module Claude introuvable (vendor/anthropic-sdk.js).')); }; document.head.appendChild(sc); }));
+  }
+  const ANTH_EFFORT = { faible: 'low', moyen: 'medium', eleve: 'high' };
+  function anthErr(e) {
+    const st = e && e.status;
+    if (e && (e.name === 'APIUserAbortError' || e.name === 'AbortError')) return err('cancelled', 'Arrêté');
+    if (st === 401 || st === 403) return err('auth', 'Clé API Anthropic refusée. Vérifiez-la dans Paramètres.');
+    if (st === 404) return err('http', 'Modèle Claude introuvable : choisissez-en un autre dans Paramètres.');
+    if (st === 429) return err('rate_limited', "Limite de l'API Anthropic atteinte. Réessayez plus tard.");
+    if (st === 400 && /credit|balance/i.test(e.message || '')) return err('http', "Crédit insuffisant sur votre compte API Anthropic.");
+    if (st >= 500) return err('http', 'Service Claude momentanément indisponible. Réessayez plus tard.');
+    if (!st) return err('network', netMsg());
+    return err('http', 'Erreur ' + st + ' de l\'API Anthropic. ' + String(e.message || '').slice(0, 160));
+  }
+  async function runAnthropic(turns, system, effort, opts) {
+    const a = cfg.api; if (!a.apiKey) throw err('config', 'Collez votre clé API Anthropic dans Paramètres.');
+    const Anthropic = await loadSdk();
+    const client = new Anthropic({ apiKey: a.apiKey, dangerouslyAllowBrowser: true });
+    const model = a.model || 'claude-opus-5-5';
+    const base = { model, max_tokens: 16000, system, messages: turns, ...(model.startsWith('claude-haiku') ? {} : { output_config: { effort: ANTH_EFFORT[effort] || 'medium' } }) };
+    let text = '';
+    const go = async params => {
+      text = '';
+      const stream = params.betas ? client.beta.messages.stream(params, { signal: opts.signal }) : client.messages.stream(params, { signal: opts.signal });
+      stream.on('text', d => { text += d; opts.onText && opts.onText(text); });
+      return stream.finalMessage();
+    };
+    let msg;
+    try {
+      try { msg = await go({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }); }
+      catch (e) { if (e && e.status === 400 && /fallback/i.test(e.message || '')) msg = await go(base); else throw e; }
+    } catch (e) { const x = anthErr(e); x.text = text; throw x; }
+    const u = msg.usage || {}; record((u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0));
+    if (msg.stop_reason === 'refusal') throw err('refused', 'Claude a décliné cette demande.');
+    const out = (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join('') || text;
+    if (!out.trim()) throw err('empty_completion', "L'IA n'a rien répondu.");
+    return { text: out, truncated: msg.stop_reason === 'max_tokens' };
+  }
   async function runApi(turns, system, effort, opts, inChars) {
     const a = cfg.api;
+    if ((PRESETS.find(p => p.id === a.preset) || {}).kind === 'anthropic') return runAnthropic(turns, system, effort, opts);
     if (!a.baseUrl) throw err('config', "Indiquez l'adresse de l'API dans Paramètres.");
     if (!a.model) throw err('config', 'Choisissez un modèle dans Paramètres (bouton « Tester la connexion »).');
     const headers = { 'Content-Type': 'application/json' }; if (a.apiKey) headers.Authorization = 'Bearer ' + a.apiKey;
@@ -164,7 +211,12 @@ const Settings = (() => {
     const base = res.status === 401 || res.status === 403 ? 'Clé API refusée.' : res.status === 404 ? 'Modèle ou adresse introuvable.' : res.status === 429 ? 'Limite du fournisseur atteinte ou crédit épuisé.' : res.status === 402 ? 'Crédit épuisé chez le fournisseur.' : `Erreur ${res.status} du fournisseur.`;
     return base + (detail ? ' (' + String(detail).slice(0, 200) + ')' : '');
   }
-  async function listModels(base, key) {
+  async function listModels(base, key, presetId) {
+    if (presetId === 'anthropic') {
+      if (!key) throw err('config', 'Collez d\'abord votre clé API Anthropic.');
+      const Anthropic = await loadSdk(); const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
+      try { const ids = []; for await (const m of client.models.list()) ids.push(m.id); return ids; } catch (e) { throw anthErr(e); }
+    }
     const headers = {}; if (key) headers.Authorization = 'Bearer ' + key;
     let res; try { res = await fetch(base.replace(/\/+$/, '') + '/models', { headers }); } catch (e) { throw err('network', netMsg()); }
     if (!res.ok) throw err('http', await httpMsg(res));
@@ -188,7 +240,7 @@ const Settings = (() => {
         <div class="seg"><button class="${draft.theme !== 'nuit' ? 'on' : ''}" data-set-theme="jour">Mode jour (papier crème)</button><button class="${draft.theme === 'nuit' ? 'on' : ''}" data-set-theme="nuit">Mode nuit (anthracite chaud)</button></div>
       </div>
       <div class="set-panel" ${tab === 'ia' ? '' : 'hidden'}>
-        <div class="prov-grid">${[['claude', 'Claude', 'Votre compte claude.ai, sans clé. Uniquement dans claude.ai.'], ['api', 'Une autre IA', inClaudeAi() ? 'DeepSeek, ChatGPT, Mistral… Indisponible dans claude.ai.' : 'DeepSeek, ChatGPT, Mistral… avec une clé API.'], ['off', 'Aucune IA', "L'assistant et les boutons IA sont masqués."]].map(([k, t, d]) => `<button class="prov ${draft.ai.provider === k ? 'on' : ''}" data-set-prov="${k}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
+        <div class="prov-grid">${[...(inClaudeAi() ? [['claude', 'Claude', 'Votre compte claude.ai, sans clé. Uniquement dans claude.ai.']] : []), ['api', 'Une IA par clé API', inClaudeAi() ? 'Claude, ChatGPT, DeepSeek, Mistral… Indisponible dans claude.ai.' : 'Claude, ChatGPT, DeepSeek, Mistral… avec votre propre clé.'], ['off', 'Aucune IA', "L'assistant et les boutons IA sont masqués."]].map(([k, t, d]) => `<button class="prov ${draft.ai.provider === k ? 'on' : ''}" data-set-prov="${k}"><b>${t}</b><span>${d}</span></button>`).join('')}</div>
         <div ${draft.ai.provider === 'claude' ? '' : 'hidden'}>
           <div class="set-row"><label for="setTier">Modèle</label><select class="in" id="setTier">${TIERS.map(([v, l]) => `<option value="${v}" ${draft.ai.tier === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
           <p class="f-help">claude.ai choisit le modèle exact selon votre abonnement : « Le plus capable » réfléchit plus longtemps et consomme davantage.</p>
@@ -244,7 +296,7 @@ const Settings = (() => {
           else if (d.setTest !== undefined) {
             read(back); const out = back.querySelector('#setTest'); out.textContent = 'Connexion…'; out.className = 'set-test';
             try {
-              models = await listModels(draft.api.baseUrl, draft.api.apiKey);
+              models = await listModels(draft.api.baseUrl, draft.api.apiKey, draft.api.preset);
               const pr = PRESETS.find(x => x.id === draft.api.preset);
               if (!draft.api.model || !models.includes(draft.api.model)) draft.api.model = (pr && pr.model && models.includes(pr.model)) ? pr.model : (models[0] || draft.api.model);
               redraw(); const o2 = back.querySelector('#setTest'); o2.textContent = `Connecté : ${models.length} modèle${models.length > 1 ? 's' : ''} disponible${models.length > 1 ? 's' : ''}.`; o2.className = 'set-test ok';

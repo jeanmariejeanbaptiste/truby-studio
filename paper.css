@@ -501,3 +501,5 @@ table.cmp textarea { font-family: var(--font-serif); font-size: 14px; }
 .set-test-row .set-test { flex: 1 1 260px; min-width: 0; }
 .set-panel > div > .set-warn:first-child { margin: 0 0 10px; }
 @media (max-width: 860px) { .set-test-row { padding-left: 0; } }
+.prov-grid { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+@media (max-width: 860px) { .prov-grid { grid-auto-flow: row; grid-template-columns: minmax(0, 1fr); } }
