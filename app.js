@@ -127,13 +127,26 @@ const App = (() => {
     db.projects.forEach(migrate);
   }
   const saveLocal = debounce(() => {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(db)); storageOk = true; if (!window.Cloud || !Cloud.active) setSaveState('Enregistré dans le navigateur'); }
+    try { localStorage.setItem(LS_KEY, JSON.stringify(db)); storageOk = true; if (!(window.Cloud && Cloud.active) && !(window.Gate && Gate.active)) setSaveState('Enregistré dans le navigateur'); }
     catch (e) { storageOk = false; if (!window.Cloud || !Cloud.active) setSaveState('⚠ Stockage local indisponible — enregistrez le fichier projet'); }
     autoSaveFile(); cloudSyncLater();
   }, 400);
-  const cloudSyncLater = debounce(() => { if (window.Cloud && Cloud.active) Cloud.sync(db.projects); }, 2000);
+  const cloudSyncLater = debounce(() => {
+    if (window.Cloud && Cloud.active) Cloud.sync(db.projects);
+    if (window.Gate && Gate.active) Gate.sync(db.projects).then(extra => { if (extra && extra.length) { extra.forEach(p => db.projects.push(migrate(p))); try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (e) {} if (ui.view === 'home') render(); } });
+  }, 2000);
+  const DRIVE_TXT = { sync: 'Synchronisation avec Google Drive…', ok: 'Enregistré dans votre Google Drive', error: '⚠ Sauvegarde Google Drive impossible — enregistrez le fichier projet', expired: '⚠ Session Google expirée — cliquez ici pour vous reconnecter' };
   const CLOUD_TXT = { sync: 'Synchronisation avec claude.ai…', ok: 'Enregistré sur votre compte claude.ai', error: '⚠ Sauvegarde claude.ai impossible — enregistrez le fichier projet', full: '⚠ Espace claude.ai plein — enregistrez le fichier projet' };
   function startCloud() {
+    if (window.Gate && !window.claude) {
+      Gate.onStatus(st => { if (DRIVE_TXT[st]) setSaveState(DRIVE_TXT[st]); const el = $('#saveState'); if (el) el.classList.toggle('clickable', st === 'expired'); });
+      $('#saveState').addEventListener('click', async () => { if (Gate.status === 'expired' && await Gate.reconnect()) cloudSyncLater(); });
+      Gate.start(remote => {
+        remote.forEach(rp => { const i = db.projects.findIndex(x => x.id === rp.id); if (i < 0) db.projects.push(migrate(rp)); else if ((rp.updated || 0) > (db.projects[i].updated || 0)) db.projects[i] = migrate(rp); });
+        try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (e) {}
+        render(); Gate.sync(db.projects);
+      });
+    }
     if (!window.Cloud) return;
     Cloud.onStatus(st => { if (CLOUD_TXT[st]) setSaveState(CLOUD_TXT[st]); });
     Cloud.start(remote => {
@@ -236,7 +249,7 @@ const App = (() => {
         catch (e) {
           const c = e && e.code;
           if (c === 'declined') return false;
-          toast(c === 'rate_limited' ? 'Une fenêtre d\'enregistrement est déjà ouverte.' : c === 'too_large' ? 'Fichier trop volumineux pour être enregistré ici.' : 'Enregistrement de fichier impossible dans cette vue.');
+          toast(c === 'rate_limited' ? 'Une fenêtre d\'enregistrement est déjà ouverte.' : c === 'too_large' ? 'Fichier trop volumineux pour être enregistré ici.' : 'Enregistrement de fichier impossible dans cette vue.', { alert: true });
           return false;
         }
       }
@@ -291,7 +304,9 @@ const App = (() => {
   function confirmBox(title, text, okLabel = 'Confirmer', danger = false) {
     return new Promise(res => modal({ title, html: `<p>${esc(text)}</p>`, actions: [{ label: 'Annuler', run: () => res(false) }, { label: okLabel, cls: danger ? 'primary' : 'primary', run: () => res(true) }] }));
   }
+  /* notifications : seulement quand une action est impossible (les autres sont silencieuses) */
   function toast(msg, opt = {}) {
+    if (!opt.alert) return;
     const el = document.createElement('div'); el.className = 'toast';
     el.innerHTML = `<span>${esc(msg)}</span>`;
     if (opt.undo) { const b = document.createElement('button'); b.textContent = 'Annuler'; b.onclick = () => { undo(); el.remove(); }; el.appendChild(b); }
@@ -304,7 +319,7 @@ const App = (() => {
     catch (e) {
       const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select();
       let ok = false; try { ok = document.execCommand('copy'); } catch (_) {}
-      ta.remove(); toast(ok ? label : 'Copie impossible : sélectionnez le texte et faites Ctrl+C'); return ok;
+      ta.remove(); if (!ok) toast('Copie impossible : sélectionnez le texte et faites Ctrl+C', { alert: true }); return ok;
     }
   }
 
@@ -459,7 +474,7 @@ const App = (() => {
   async function studyOverlap() {
     const p = P(); const fmt = arr => (arr || []).filter(x => filled(x.text)).map(x => '- ' + String(x.text).trim() + (x.stars ? ` (${x.stars}/5)` : '')).join('\n');
     const a = fmt(p.premisse.souhaitsL), b = fmt(p.premisse.premissesL);
-    if (!a && !b) return toast('Remplissez d\'abord la liste de souhaits ou de prémisses');
+    if (!a && !b) return toast('Remplissez d\'abord la liste de souhaits ou de prémisses', { alert: true });
     const paint = () => { const el = $('#aiOverlap'); if (el) el.outerHTML = overlapHTML(); };
     ui.overlap = { busy: true }; paint();
     const system = "Méthode de John Truby (« L'Anatomie du scénario ») : en étudiant ensemble la liste de souhaits et la liste de prémisses d'un auteur, on repère les éléments qui reviennent (types de personnages, ton, genres, thèmes, périodes, situations) ; c'est, dans sa forme la plus brute, sa vision des choses. Les notes sur 5 indiquent ce que l'auteur préfère. Réponds UNIQUEMENT avec un objet JSON : {\"elements\": [\"3 à 6 éléments qui se recoupent, chacun en quelques mots\"], \"commentaire\": \"deux phrases maximum en français : ce que cela dit de la vision de l'auteur et une piste pour la prémisse\"}.";
@@ -474,7 +489,7 @@ const App = (() => {
   }
   async function ratePremise() {
     const v = String(getP(P(), 'premisse.premisse') || '').trim();
-    if (!v) return toast('Écrivez d\'abord votre prémisse');
+    if (!v) return toast('Écrivez d\'abord votre prémisse', { alert: true });
     const paint = () => { const el = $('#pmRate'); if (el) el.outerHTML = rateHTML(getP(P(), 'premisse.premisse')); };
     ui.rate = { busy: true }; paint();
     const system = "Tu évalues une prémisse de film selon John Truby (« L'Anatomie du scénario »). Critères : une seule phrase courte ; un événement déclencheur ; une indication sur le personnage principal ; une indication sur le dénouement ; un conflit et un désir clairs ; un potentiel de transformation du héros ; originalité. Réponds UNIQUEMENT avec un objet JSON : {\"note\": entier de 0 à 10, \"avis\": \"une phrase en français\", \"conseil\": \"une phrase en français pour l'améliorer\"}.";
@@ -963,7 +978,7 @@ const App = (() => {
   function renderExport(p) {
     return `<div class="section">${sectionHead('export')}${Exporter.panelHTML(p)}</div>`;
   }
-  function exportDialog() { if (!P()) return toast('Ouvrez d\'abord un projet'); modal({ title: 'Exporter', html: Exporter.panelHTML(P()), wide: true }); }
+  function exportDialog() { if (!P()) return toast('Ouvrez d\'abord un projet', { alert: true }); modal({ title: 'Exporter', html: Exporter.panelHTML(P()), wide: true }); }
 
   /* ---------------- copie de sections ---------------- */
   function sectionText(id) { return Exporter.sectionMD(P(), id); }
@@ -1077,7 +1092,7 @@ const App = (() => {
     if (d.bar) { const b = p.structure.barred; if (T.MANDATORY22.includes(d.bar)) return; if (b[d.bar]) delete b[d.bar]; else b[d.bar] = true; return commit(); }
     if (d.order) { p.structure.order = d.order; return commit(); }
     if (d.gotoStep) { ui.allowed[p.id + 'structure'] = true; ui.view = 'structure'; render(); return requestAnimationFrame(() => $('#step-' + d.gotoStep)?.scrollIntoView({ block: 'start' })); }
-    if ('eventsToScenes' in d) { const lines = (p.structure.evenements || '').split('\n').map(x => x.replace(/^[-•*\d.)\s]+/, '').trim()).filter(Boolean); if (!lines.length) return toast('Écrivez d\'abord des événements, un par ligne'); lines.forEach(l => addScene(l)); commit(false); return toast(lines.length + ' scène(s) ajoutée(s) au tissage'); }
+    if ('eventsToScenes' in d) { const lines = (p.structure.evenements || '').split('\n').map(x => x.replace(/^[-•*\d.)\s]+/, '').trim()).filter(Boolean); if (!lines.length) return toast('Écrivez d\'abord des événements, un par ligne', { alert: true }); lines.forEach(l => addScene(l)); commit(false); return toast(lines.length + ' scène(s) ajoutée(s) au tissage'); }
     if ('openSettings' in d) { document.body.classList.remove('nav-open'); return Settings.open('ia'); }
     if ('aiRate' in d) return ratePremise();
     if (d.aiSection) return analyzeSection(d.aiSection);

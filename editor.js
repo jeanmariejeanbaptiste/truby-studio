@@ -409,9 +409,9 @@ const Editor = (() => {
     switch (cmd) {
       case 'bold': case 'italic': case 'underline': case 'strikeThrough': case 'removeFormat': document.execCommand(cmd); markCur(); syncLater(); break;
       case 'cut': case 'copy': document.execCommand(cmd); break;
-      case 'paste': A.toast('Utilisez Ctrl+V (⌘+V) pour coller : le navigateur ne permet pas au bouton de lire le presse-papiers.'); break;
+      case 'paste': A.toast('Utilisez Ctrl+V (⌘+V) pour coller : le navigateur ne permet pas au bouton de lire le presse-papiers.', { alert: true }); break;
       case 'upper': { const sel = window.getSelection(); if (sel.rangeCount && !sel.isCollapsed) document.execCommand('insertText', false, sel.toString().toLocaleUpperCase('fr')); else if (p) { p.textContent = p.textContent.toLocaleUpperCase('fr'); caretAtEnd(p); } syncLater(); break; }
-      case 'type': if (p) setType(p, b.dataset.t); else A.toast('Placez d\'abord le curseur dans le scénario'); break;
+      case 'type': if (p) setType(p, b.dataset.t); else A.toast('Placez d\'abord le curseur dans le scénario', { alert: true }); break;
       case 'find': toggleFind(true); break;
       case 'findClose': toggleFind(false); break;
       case 'findNext': findNext(); break;

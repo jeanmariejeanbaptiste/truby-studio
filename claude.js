@@ -146,7 +146,7 @@ Règles :
   }
   async function send(text) {
     text = (text || '').trim(); if (!text || busy) return;
-    const p = A.P(); if (!p) return A.toast('Ouvrez d\'abord un projet');
+    const p = A.P(); if (!p) return A.toast('Ouvrez d\'abord un projet', { alert: true });
     if (unavailableMsg()) return renderPanel();
     const ta = document.getElementById('cpIn'); if (ta) ta.value = '';
     if (window.Editor && A.ui.view === 'scenario') Editor.flush(true);
@@ -185,7 +185,7 @@ Règles :
     if (b.dataset.clQ) return send(b.dataset.clQ);
     if (b.dataset.clApply || b.dataset.clSkip) {
       const [vi, pi] = (b.dataset.clApply || b.dataset.clSkip).split(':').map(Number); const pr = c.view[vi].proposals[pi];
-      if (b.dataset.clApply) { if (apply(pr)) { pr.done = 'ok'; A.commit(); A.toast('Modification appliquée', { undo: true }); } else A.toast('Impossible d\'appliquer : chemin inconnu'); }
+      if (b.dataset.clApply) { if (apply(pr)) { pr.done = 'ok'; A.commit(); A.toast('Modification appliquée', { undo: true }); } else A.toast('Impossible d\'appliquer : chemin inconnu', { alert: true }); }
       else pr.done = 'skip';
       return renderPanel();
     }

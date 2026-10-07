@@ -204,7 +204,7 @@ ${css}
     document.body.appendChild(f);
     f.onload = () => {
       const w = f.contentWindow;
-      const go = () => { try { w.focus(); w.print(); } catch (e) { A.toast('Impression impossible ici : exportez en HTML puis imprimez en PDF depuis le navigateur.'); } setTimeout(() => f.remove(), 60000); };
+      const go = () => { try { w.focus(); w.print(); } catch (e) { A.toast('Impression impossible ici : exportez en HTML puis imprimez en PDF depuis le navigateur.', { alert: true }); } setTimeout(() => f.remove(), 60000); };
       (w.document.fonts ? w.document.fonts.ready : Promise.resolve()).then(() => setTimeout(go, 250));
     };
     f.srcdoc = html;
@@ -227,7 +227,7 @@ ${css}
     const name = A.safeName(p.title);
     const dl = async (content, ext, type) => { const ok = await A.download(new Blob([content], { type: type + ';charset=utf-8' }), name + ext); if (ok) A.toast('Fichier exporté : ' + name + ext); return ok; };
     /* dans claude.ai, l'impression est bloquée : on enregistre une page prête à imprimer en PDF */
-    const pdf = (html, ext) => window.claude ? dl(html, ext, 'text/html').then(ok => ok && A.toast('Ouvrez ce fichier puis Ctrl+P (Cmd+P) → « Enregistrer au format PDF ».')) : printDoc(html);
+    const pdf = (html, ext) => window.claude ? dl(html, ext, 'text/html').then(ok => ok && A.toast('Ouvrez ce fichier puis Ctrl+P (Cmd+P) → « Enregistrer au format PDF ».', { alert: true })) : printDoc(html);
     switch (btn.dataset.exp) {
       case 'scriptPDF': return pdf(scriptDoc(p), '-scenario-pour-PDF.html');
       case 'scriptHTML': return dl(scriptDoc(p), '-scenario.html', 'text/html');
