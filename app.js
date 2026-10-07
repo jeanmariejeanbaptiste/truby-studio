@@ -165,6 +165,22 @@ const App = (() => {
       Cloud.sync(db.projects);
     });
   }
+  /* menu profil (version en ligne, connecté avec Google) */
+  function setupProfile() {
+    const b = document.createElement('button'); b.className = 'tb-btn profile-btn'; b.id = 'btnProfile'; b.title = 'Profil'; b.setAttribute('aria-label', 'Profil');
+    b.textContent = (Gate.email || '?').charAt(0).toUpperCase();
+    $('#btnTheme').before(b);
+    b.onclick = e => {
+      e.stopPropagation(); const old = $('#profileMenu'); if (old) return old.remove();
+      const m = document.createElement('div'); m.id = 'profileMenu'; m.className = 'profile-menu';
+      const st = { ok: 'Vos projets sont enregistrés dans votre Google Drive.', sync: 'Synchronisation en cours…', expired: 'Session expirée : cliquez sur l\'indication rouge en haut pour vous reconnecter.', nodrive: 'Accès Drive non autorisé : vos projets ne sont pas sauvegardés en ligne.', error: 'Sauvegarde Drive impossible pour le moment.' }[Gate.status] || '';
+      m.innerHTML = `<div class="pm-who"><span class="pm-av">${esc(b.textContent)}</span><div><b>Connecté avec Google</b><span>${esc(Gate.email)}</span></div></div><p class="pm-st">${esc(st)}</p><button class="btn sm" data-open-settings>${ICON.gear}Paramètres</button><button class="btn sm danger" id="pmOut">Se déconnecter</button>`;
+      document.body.appendChild(m);
+      const r = b.getBoundingClientRect(); m.style.top = (r.bottom + 6) + 'px'; m.style.right = Math.max(8, innerWidth - r.right) + 'px';
+      $('#pmOut', m).onclick = () => Gate.signOut();
+      setTimeout(() => document.addEventListener('click', function close(ev) { if (!m.contains(ev.target) || ev.target.closest('[data-open-settings]')) { m.remove(); document.removeEventListener('click', close); } }), 0);
+    };
+  }
   function setSaveState(t) { const el = $('#saveState'); if (el) el.textContent = t; }
 
   /* ---------------- historique global (Annuler / Rétablir) ---------------- */
@@ -1146,6 +1162,7 @@ const App = (() => {
     $('#btnExport').innerHTML = $('#btnExport').innerHTML.replace('Exporter', '<span class="lbl">Exporter</span>');
     $('#btnClaude').innerHTML = $('#btnClaude').innerHTML.replace('Claude', '<span class="lbl">Claude</span>');
     Settings.applyTheme(); Settings.refreshUI(); startCloud();
+    if (window.Gate && Gate.signedIn) setupProfile();
     const dl = document.createElement('datalist'); dl.id = 'momentsList'; dl.innerHTML = T.MOMENTS.map(m => `<option value="${m}">`).join(''); document.body.appendChild(dl);
     try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch (e) {}
     bind();

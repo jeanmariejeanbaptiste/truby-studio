@@ -121,7 +121,7 @@ const Settings = (() => {
   let sdkP = null;
   function loadSdk() {
     if (window.Anthropic) return Promise.resolve(window.Anthropic);
-    return sdkP || (sdkP = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'vendor/anthropic-sdk.js?v=20261007001218'; sc.onload = () => window.Anthropic ? res(window.Anthropic) : rej(err('config', 'Module Claude introuvable.')); sc.onerror = () => { sdkP = null; rej(err('network', 'Module Claude introuvable (vendor/anthropic-sdk.js).')); }; document.head.appendChild(sc); }));
+    return sdkP || (sdkP = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'vendor/anthropic-sdk.js?v=20261007001515'; sc.onload = () => window.Anthropic ? res(window.Anthropic) : rej(err('config', 'Module Claude introuvable.')); sc.onerror = () => { sdkP = null; rej(err('network', 'Module Claude introuvable (vendor/anthropic-sdk.js).')); }; document.head.appendChild(sc); }));
   }
   const ANTH_EFFORT = { faible: 'low', moyen: 'medium', eleve: 'high' };
   function anthErr(e) {
@@ -133,7 +133,7 @@ const Settings = (() => {
     if (st === 400 && /credit|balance/i.test(e.message || '')) return err('http', "Crédit insuffisant sur votre compte API Anthropic.");
     if (st >= 500) return err('http', 'Service Claude momentanément indisponible. Réessayez plus tard.');
     if (!st) return err('network', netMsg());
-    return err('http', 'Erreur ' + st + ' de l\'API Anthropic. ' + String(e.message || '').slice(0, 160));
+    return err('http', 'Erreur ' + st + ' de l\'API Anthropic : ' + String(e.message || '').replace(/^\d+\s*/, '').slice(0, 220));
   }
   async function runAnthropic(turns, system, effort, opts) {
     const a = cfg.api; if (!a.apiKey) throw err('config', 'Collez votre clé API Anthropic dans Paramètres.');
@@ -148,32 +148,47 @@ const Settings = (() => {
       stream.on('text', d => { text += d; opts.onText && opts.onText(text); });
       return stream.finalMessage();
     };
-    let msg;
-    try {
-      try { msg = await go({ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }); }
-      catch (e) { if (e && e.status === 400 && /fallback/i.test(e.message || '')) msg = await go(base); else throw e; }
-    } catch (e) { const x = anthErr(e); x.text = text; throw x; }
+    /* repli serveur et effort ne sont pas acceptés par tous les modèles : on retire ce que l'API refuse (400) */
+    const noEffort = { ...base }; delete noEffort.output_config;
+    const tries = [{ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }, base, noEffort];
+    let msg, last;
+    for (const params of tries) {
+      try { msg = await go(params); break; }
+      catch (e) { last = e; if (!(e && e.status === 400) || /credit|balance/i.test(e.message || '')) break; }
+    }
+    if (!msg) { const x = anthErr(last); x.text = text; throw x; }
     const u = msg.usage || {}; record((u.input_tokens || 0) + (u.output_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0));
     if (msg.stop_reason === 'refusal') throw err('refused', 'Claude a décliné cette demande.');
     const out = (msg.content || []).filter(b => b.type === 'text').map(b => b.text).join('') || text;
     if (!out.trim()) throw err('empty_completion', "L'IA n'a rien répondu.");
     return { text: out, truncated: msg.stop_reason === 'max_tokens' };
   }
+  const VARIANT_OK = {};
   async function runApi(turns, system, effort, opts, inChars) {
     const a = cfg.api;
     if ((PRESETS.find(p => p.id === a.preset) || {}).kind === 'anthropic') return runAnthropic(turns, system, effort, opts);
     if (!a.baseUrl) throw err('config', "Indiquez l'adresse de l'API dans Paramètres.");
     if (!a.model) throw err('config', 'Choisissez un modèle dans Paramètres (bouton « Tester la connexion »).');
     const headers = { 'Content-Type': 'application/json' }; if (a.apiKey) headers.Authorization = 'Bearer ' + a.apiKey;
-    let res;
-    try {
-      res = await fetch(a.baseUrl.replace(/\/+$/, '') + '/chat/completions', { method: 'POST', headers, signal: opts.signal,
-        body: JSON.stringify({ model: a.model, stream: true, max_tokens: opts.maxTokens || EFFORT_MAX[effort], messages: [{ role: 'system', content: system }, ...turns] }) });
-    } catch (e) {
-      if (opts.signal && opts.signal.aborted) throw err('cancelled', 'Arrêté');
-      throw err('network', netMsg());
+    /* chaque fournisseur a ses exigences : on essaie plusieurs formes de requête sur une erreur 400
+       (max_tokens / max_completion_tokens / sans limite / consignes dans le premier message) */
+    const limit = Math.max(2048, opts.maxTokens || EFFORT_MAX[effort]);
+    const variants = [
+      { lim: 'max_tokens', sys: true }, { lim: 'max_completion_tokens', sys: true }, { lim: null, sys: true }, { lim: null, sys: false }
+    ];
+    const key = a.baseUrl + '|' + a.model; let vi = VARIANT_OK[key] || 0, res, lastMsg = '';
+    for (; vi < variants.length; vi++) {
+      const v = variants[vi];
+      const messages = v.sys ? [{ role: 'system', content: system }, ...turns] : [{ role: 'user', content: system + '\n\n' + turns[0].content }, ...turns.slice(1)];
+      const body = { model: a.model, stream: true, messages }; if (v.lim) body[v.lim] = limit;
+      try { res = await fetch(a.baseUrl.replace(/\/+$/, '') + '/chat/completions', { method: 'POST', headers, signal: opts.signal, body: JSON.stringify(body) }); }
+      catch (e) { if (opts.signal && opts.signal.aborted) throw err('cancelled', 'Arrêté'); throw err('network', netMsg()); }
+      if (res.ok) { VARIANT_OK[key] = vi; break; }
+      if (res.status !== 400 && res.status !== 422) break;
+      lastMsg = await httpMsg(res);
+      if (/credit|balance|quota|billing|insufficient/i.test(lastMsg)) break;
     }
-    if (!res.ok) throw err(res.status === 401 || res.status === 403 ? 'auth' : res.status === 429 ? 'rate_limited' : 'http', await httpMsg(res));
+    if (!res.ok) throw err(res.status === 401 || res.status === 403 ? 'auth' : res.status === 429 ? 'rate_limited' : 'http', res.bodyUsed ? lastMsg : await httpMsg(res));
     let text = '', usageTok = 0, truncated = false;
     try {
       const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
@@ -207,7 +222,8 @@ const Settings = (() => {
       : "Connexion impossible : vérifiez l'adresse de l'API et votre réseau. Certains fournisseurs refusent les appels depuis un navigateur ; OpenRouter les accepte toujours.";
   }
   async function httpMsg(res) {
-    let detail = ''; try { const j = await res.json(); detail = (j.error && (j.error.message || j.error)) || j.message || ''; } catch (e) {}
+    let detail = ''; try { let j = await res.json(); if (Array.isArray(j)) j = j[0] || {}; detail = (j.error && (j.error.message || j.error)) || j.message || j.detail || ''; if (typeof detail !== 'string') detail = JSON.stringify(detail); } catch (e) {}
+    if (/credit|balance|insufficient|billing|quota/i.test(detail)) return 'Crédit insuffisant ou quota épuisé chez le fournisseur (' + detail.slice(0, 160) + ')';
     const base = res.status === 401 || res.status === 403 ? 'Clé API refusée.' : res.status === 404 ? 'Modèle ou adresse introuvable.' : res.status === 429 ? 'Limite du fournisseur atteinte ou crédit épuisé.' : res.status === 402 ? 'Crédit épuisé chez le fournisseur.' : `Erreur ${res.status} du fournisseur.`;
     return base + (detail ? ' (' + String(detail).slice(0, 200) + ')' : '');
   }

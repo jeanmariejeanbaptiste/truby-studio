@@ -138,6 +138,11 @@ const Gate = (() => {
   }
   async function reconnect() { try { await loadGis(); init(); await requestToken('consent'); if (!driveOk) { setStatus('nodrive'); return false; } setStatus('ok'); return true; } catch (e) { return false; } }
 
-  return { run, start, sync, reconnect, get active() { return ready; }, get status() { return status; }, get email() { return email; }, onStatus(f) { listeners.push(f); } };
+  function signOut() {
+    try { if (token && window.google) google.accounts.oauth2.revoke(token, () => {}); } catch (e) {}
+    token = null; try { localStorage.removeItem(HINT_KEY); } catch (e) {}
+    location.reload();
+  }
+  return { run, start, sync, reconnect, signOut, get signedIn() { return !!email; }, get active() { return ready; }, get status() { return status; }, get email() { return email; }, onStatus(f) { listeners.push(f); } };
 })();
 window.Gate = Gate;

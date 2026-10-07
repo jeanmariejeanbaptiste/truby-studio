@@ -562,3 +562,13 @@ body.is-home .tb-center { opacity: 0; pointer-events: none; }
 #gate .g-err { color: var(--brick); font-style: italic; margin: 10px 0 0; }
 #gate .g-note { font-size: 13px; color: var(--fg-3); margin-top: 18px; }
 .save-state.clickable { cursor: pointer; color: var(--brick); text-decoration: underline; }
+
+/* ---------- menu profil ---------- */
+.profile-btn { font-family: var(--font-display); font-size: 16px; border: 1.4px solid var(--line-strong) !important; border-radius: 52% 48% 55% 45% / 47% 55% 45% 53% !important; color: var(--accent) !important; }
+.profile-menu { position: fixed; z-index: 120; width: min(300px, calc(100vw - 16px)); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r); box-shadow: var(--shadow-lift); padding: 14px; display: grid; gap: 10px; }
+.profile-menu .pm-who { display: flex; gap: 10px; align-items: center; }
+.profile-menu .pm-who b { display: block; font-size: 14px; }
+.profile-menu .pm-who span:not(.pm-av) { font-size: 13px; color: var(--fg-2); word-break: break-all; }
+.profile-menu .pm-av { width: 36px; height: 36px; flex: none; display: grid; place-items: center; font-family: var(--font-display); font-size: 18px; color: var(--accent-fg); background: var(--accent); border-radius: 52% 48% 55% 45% / 47% 55% 45% 53%; }
+.profile-menu .pm-st { margin: 0; font-size: 13px; color: var(--fg-2); font-style: italic; }
+.profile-menu .btn { justify-content: center; }
