@@ -12,7 +12,7 @@ const Gate = (() => {
   const CFG = window.TRUBY_CONFIG || {};
   const SCOPE = 'openid email https://www.googleapis.com/auth/drive.appdata';
   const HINT_KEY = 'trubyStudio.gHint';
-  let tokenClient = null, token = null, tokenExp = 0, email = '', pending = null;
+  let tokenClient = null, token = null, tokenExp = 0, email = '', pending = null, driveOk = true;
 
   const sha256 = async s => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))].map(b => b.toString(16).padStart(2, '0')).join('');
   function loadGis() {
@@ -70,7 +70,7 @@ const Gate = (() => {
     if (tokenClient) return;
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CFG.googleClientId, scope: SCOPE,
-      callback: r => { const p = pending; pending = null; if (!p) return; if (r.error) return p.rej(new Error('Connexion refusée.')); token = r.access_token; tokenExp = Date.now() + (r.expires_in - 60) * 1000; p.res(token); },
+      callback: r => { const p = pending; pending = null; if (!p) return; if (r.error) return p.rej(new Error('Connexion refusée.')); token = r.access_token; tokenExp = Date.now() + (r.expires_in - 60) * 1000; driveOk = !google.accounts.oauth2.hasGrantedAllScopes || google.accounts.oauth2.hasGrantedAllScopes(r, 'https://www.googleapis.com/auth/drive.appdata'); p.res(token); },
       error_callback: e => { const p = pending; pending = null; if (p) p.rej(new Error(e && e.type === 'popup_closed' ? 'Fenêtre de connexion fermée.' : 'Connexion impossible. Réessayez.')); }
     });
   }
@@ -107,6 +107,7 @@ const Gate = (() => {
   }
   async function start(onLoaded) {
     if (window.claude || !valid()) return;
+    if (!driveOk) { setStatus('nodrive'); return; }
     try {
       setStatus('sync');
       const remote = await readRemote();
@@ -135,7 +136,7 @@ const Gate = (() => {
     });
     return queue;
   }
-  async function reconnect() { try { await loadGis(); init(); await requestToken(''); setStatus('ok'); return true; } catch (e) { return false; } }
+  async function reconnect() { try { await loadGis(); init(); await requestToken('consent'); if (!driveOk) { setStatus('nodrive'); return false; } setStatus('ok'); return true; } catch (e) { return false; } }
 
   return { run, start, sync, reconnect, get active() { return ready; }, get status() { return status; }, get email() { return email; }, onStatus(f) { listeners.push(f); } };
 })();

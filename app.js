@@ -135,19 +135,24 @@ const App = (() => {
     if (window.Cloud && Cloud.active) Cloud.sync(db.projects);
     if (window.Gate && Gate.active) Gate.sync(db.projects).then(extra => { if (extra && extra.length) { extra.forEach(p => db.projects.push(migrate(p))); try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (e) {} if (ui.view === 'home') render(); } });
   }, 2000);
-  const DRIVE_TXT = { sync: 'Synchronisation avec Google Drive…', ok: 'Enregistré dans votre Google Drive', error: '⚠ Sauvegarde Google Drive impossible — enregistrez le fichier projet', expired: '⚠ Session Google expirée — cliquez ici pour vous reconnecter' };
+  const DRIVE_TXT = { sync: 'Synchronisation avec Google Drive…', ok: 'Enregistré dans votre Google Drive', error: '⚠ Sauvegarde Google Drive impossible — enregistrez le fichier projet', expired: '⚠ Session Google expirée — cliquez ici pour vous reconnecter', nodrive: '⚠ Accès Drive non autorisé — cliquez ici et cochez la case Google Drive' };
   const CLOUD_TXT = { sync: 'Synchronisation avec claude.ai…', ok: 'Enregistré sur votre compte claude.ai', error: '⚠ Sauvegarde claude.ai impossible — enregistrez le fichier projet', full: '⚠ Espace claude.ai plein — enregistrez le fichier projet' };
   function startCloud() {
     if (window.Gate && !window.claude) {
-      Gate.onStatus(st => { if (DRIVE_TXT[st]) setSaveState(DRIVE_TXT[st]); const el = $('#saveState'); if (el) el.classList.toggle('clickable', st === 'expired'); });
-      $('#saveState').addEventListener('click', async () => { if (Gate.status === 'expired' && await Gate.reconnect()) cloudSyncLater(); });
-      Gate.start(remote => {
-        remote.forEach(rp => { const i = db.projects.findIndex(x => x.id === rp.id); if (i < 0) db.projects.push(migrate(rp)); else if ((rp.updated || 0) > (db.projects[i].updated || 0)) db.projects[i] = migrate(rp); });
-        try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (e) {}
-        render(); Gate.sync(db.projects);
-      });
+      Gate.onStatus(st => { if (DRIVE_TXT[st]) setSaveState(DRIVE_TXT[st]); const el = $('#saveState'); if (el) el.classList.toggle('clickable', st === 'expired' || st === 'nodrive'); });
+      $('#saveState').addEventListener('click', async () => { const was = Gate.status; if ((was === 'expired' || was === 'nodrive') && await Gate.reconnect()) { if (was === 'nodrive') startCloudDrive(); else cloudSyncLater(); } });
+      startCloudDrive();
     }
-    if (!window.Cloud) return;
+    if (window.Cloud) startClaudeCloud();
+  }
+  function startCloudDrive() {
+    Gate.start(remote => {
+      remote.forEach(rp => { const i = db.projects.findIndex(x => x.id === rp.id); if (i < 0) db.projects.push(migrate(rp)); else if ((rp.updated || 0) > (db.projects[i].updated || 0)) db.projects[i] = migrate(rp); });
+      try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (e) {}
+      render(); Gate.sync(db.projects);
+    });
+  }
+  function startClaudeCloud() {
     Cloud.onStatus(st => { if (CLOUD_TXT[st]) setSaveState(CLOUD_TXT[st]); });
     Cloud.start(remote => {
       let changed = false;
@@ -156,7 +161,7 @@ const App = (() => {
         if (i < 0) { db.projects.push(migrate(rp)); changed = true; }
         else if ((rp.updated || 0) > (db.projects[i].updated || 0)) { db.projects[i] = migrate(rp); changed = true; }
       });
-      if (changed) { try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (e) {} if (!P() || ui.view === 'home') render(); else render(); }
+      if (changed) { try { localStorage.setItem(LS_KEY, JSON.stringify(db)); } catch (e) {} render(); }
       Cloud.sync(db.projects);
     });
   }
