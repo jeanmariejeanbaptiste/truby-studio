@@ -88,7 +88,7 @@ Règles :
     const c = Settings.cfg; const opt = (list, cur) => list.map(([v, l]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${l}</option>`).join('');
     const ls = Settings.limitState(); const L = c.limits;
     const lim = (L.session || L.week) ? `<span class="cp-usage ${ls.over ? 'over' : ''}" title="Jetons consommés (estimation)">${L.session ? 'Session ' + Settings.fmtN(ls.session) + ' / ' + Settings.fmtN(L.session) : ''}${L.session && L.week ? ' · ' : ''}${L.week ? 'Semaine ' + Settings.fmtN(ls.week) + ' / ' + Settings.fmtN(L.week) : ''}</span>` : '';
-    return `<div class="cp-ctrl">${c.ai.provider === 'claude' ? `<label>Modèle <select id="cpTier">${opt(Settings.TIERS, c.ai.tier)}</select></label>` : `<span class="cp-model" title="Modèle choisi dans Paramètres">${esc(c.api.model || 'modèle à choisir')}</span>`}<label>Effort <select id="cpEffort">${opt(Settings.EFFORTS, c.ai.effort)}</select></label>${lim}</div>`;
+    return `<div class="cp-ctrl">${c.ai.provider === 'claude' ? `<label>Modèle <select id="cpTier">${opt(Settings.TIERS, c.ai.tier)}</select></label>` : `<span class="cp-model" title="Modèle choisi dans Paramètres">${esc(c.api.model || 'modèle à choisir')}</span>`}${lim}</div>`;
   }
   function renderPanel() {
     const el = panel(); const c = chat(); const p = A.P();
@@ -98,8 +98,7 @@ Règles :
       <div class="cp-msgs" id="cpMsgs">${off ? `<div class="msg err">${esc(off)}</div>` : !c.view.length ? `<div class="msg assistant">${esc(name)} lit votre projet, l'analyse selon la méthode de Truby et vous propose des modifications : rien ne change tant que vous n'avez pas cliqué sur « Appliquer ».${Settings.cfg.ai.provider === 'claude' ? ' Il utilise votre compte claude.ai (aucune clé API) ; au premier message, claude.ai vous demandera d\'autoriser cette page.' : ''}</div>` : ''}
       ${!p ? '<div class="msg assistant">Ouvrez un projet pour que l\'IA puisse le lire.</div>' : ''}
       ${c.view.map(viewHTML).join('')}${busy ? `<div class="msg assistant" id="cpLive">${esc(live && splitAnswer(live.text).prose || name + ' réfléchit…')}</div>` : ''}</div>
-      ${off ? `<div class="cp-input"><button class="btn primary" data-cl="settings">Ouvrir les paramètres</button></div>` : `<div class="cp-quick">${[['Analyse ma prémisse avec la check-list de Truby', 'Prémisse'], ['Vérifie la cohérence des étapes de ma structure et dis-moi ce qui manque', 'Structure'], ["Mon adversaire principal est-il nécessaire ? Attaque-t-il la faiblesse majeure du héros et vise-t-il le même objectif ?", 'Adversaire'], ['Propose une séquence de rebondissements-révélations qui va crescendo', 'Rebondissements'], ['Relis la scène courante du scénario : construction (triangle inversé) et dialogues symphoniques', 'Relire la scène']].map(([q, l]) => `<button data-cl-q="${esc(q)}" ${busy ? 'disabled' : ''}>${esc(l)}</button>`).join('')}</div>
-      ${controlsHTML()}
+      ${off ? `<div class="cp-input"><button class="btn primary" data-cl="settings">Ouvrir les paramètres</button></div>` : `${controlsHTML()}
       <div class="cp-input"><textarea id="cpIn" placeholder="Demandez à ${esc(name)}… (Entrée pour envoyer, Maj+Entrée pour une ligne)" ${busy ? 'disabled' : ''}>${esc(draft)}</textarea>${busy ? '<button class="btn" data-cl="stop">Arrêter</button>' : '<button class="btn primary" data-cl="send">Envoyer</button>'}</div>`}`;
     const m = el.querySelector('#cpMsgs'); m.scrollTop = m.scrollHeight;
     const tier = el.querySelector('#cpTier'); if (tier) tier.onchange = () => Settings.setTier(tier.value);
@@ -162,7 +161,7 @@ Règles :
       c.turns.push({ role: 'assistant', content: res.text });
       c.view.push({ role: 'assistant', text: prose, proposals: proposals || [] });
       if (json && proposals === null) c.view.push({ role: 'error', text: 'Les propositions étaient illisibles. Demandez-les à nouveau.' });
-      if (res.truncated) c.view.push({ role: 'error', text: 'Réponse interrompue (trop longue). Demandez une suite plus ciblée, ou augmentez l\'effort.' });
+      if (res.truncated) c.view.push({ role: 'error', text: 'Réponse interrompue (trop longue). Demandez une suite plus ciblée.' });
       if (res.tierApplied && res.tierApplied !== Settings.cfg.ai.tier) c.view.push({ role: 'note', text: 'Votre abonnement a utilisé le modèle « ' + (Settings.TIERS.find(x => x[0] === res.tierApplied) || [, res.tierApplied])[1] + ' ».' });
     } catch (e) {
       const code = e && e.code;

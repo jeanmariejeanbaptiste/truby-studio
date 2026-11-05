@@ -101,7 +101,7 @@ const Settings = (() => {
       ? `Limite de session atteinte (${fmtN(ls.session)} jetons). Elle se libère dans ${fmtDur(ls.sessionReset)}, ou relevez-la dans Paramètres.`
       : `Limite hebdomadaire atteinte (${fmtN(ls.week)} jetons). Elle se libère dans ${fmtDur(ls.weekReset)}, ou relevez-la dans Paramètres.`);
     const effort = opts.effort || cfg.ai.effort;
-    const system = [opts.system || '', EFFORT_TXT[effort], cfg.ai.extra ? "Instructions de l'auteur : " + cfg.ai.extra : ''].filter(Boolean).join('\n\n');
+    const system = [opts.system || '', cfg.ai.extra ? "Instructions de l'auteur : " + cfg.ai.extra : ''].filter(Boolean).join('\n\n');
     const inChars = system.length + turns.reduce((a, t) => a + t.content.length, 0);
     if (prov === 'api') return runApi(turns, system, effort, opts, inChars);
     const sample = await getSample();
@@ -121,7 +121,7 @@ const Settings = (() => {
   let sdkP = null;
   function loadSdk() {
     if (window.Anthropic) return Promise.resolve(window.Anthropic);
-    return sdkP || (sdkP = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'vendor/anthropic-sdk.js?v=20261007080405'; sc.onload = () => window.Anthropic ? res(window.Anthropic) : rej(err('config', 'Module Claude introuvable.')); sc.onerror = () => { sdkP = null; rej(err('network', 'Module Claude introuvable (vendor/anthropic-sdk.js).')); }; document.head.appendChild(sc); }));
+    return sdkP || (sdkP = new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'vendor/anthropic-sdk.js?v=20261105194935'; sc.onload = () => window.Anthropic ? res(window.Anthropic) : rej(err('config', 'Module Claude introuvable.')); sc.onerror = () => { sdkP = null; rej(err('network', 'Module Claude introuvable (vendor/anthropic-sdk.js).')); }; document.head.appendChild(sc); }));
   }
   const ANTH_EFFORT = { faible: 'low', moyen: 'medium', eleve: 'high' };
   function anthErr(e) {
@@ -140,7 +140,7 @@ const Settings = (() => {
     const Anthropic = await loadSdk();
     const client = new Anthropic({ apiKey: a.apiKey, dangerouslyAllowBrowser: true });
     const model = a.model || 'claude-opus-5-5';
-    const base = { model, max_tokens: 16000, system, messages: turns, ...(model.startsWith('claude-haiku') ? {} : { output_config: { effort: ANTH_EFFORT[effort] || 'medium' } }) };
+    const base = { model, max_tokens: 16000, system, messages: turns };
     let text = '';
     const go = async params => {
       text = '';
@@ -149,8 +149,7 @@ const Settings = (() => {
       return stream.finalMessage();
     };
     /* repli serveur et effort ne sont pas acceptés par tous les modèles : on retire ce que l'API refuse (400) */
-    const noEffort = { ...base }; delete noEffort.output_config;
-    const tries = [{ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }, base, noEffort];
+    const tries = [{ ...base, betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' }, base];
     let msg, last;
     for (const params of tries) {
       try { msg = await go(params); break; }
@@ -172,7 +171,7 @@ const Settings = (() => {
     const headers = { 'Content-Type': 'application/json' }; if (a.apiKey) headers.Authorization = 'Bearer ' + a.apiKey;
     /* chaque fournisseur a ses exigences : on essaie plusieurs formes de requête sur une erreur 400
        (max_tokens / max_completion_tokens / sans limite / consignes dans le premier message) */
-    const limit = Math.max(2048, opts.maxTokens || EFFORT_MAX[effort]);
+    const limit = Math.max(4096, opts.maxTokens || 0);
     const variants = [
       { lim: 'max_tokens', sys: true }, { lim: 'max_completion_tokens', sys: true }, { lim: null, sys: true }, { lim: null, sys: false }
     ];
@@ -276,13 +275,12 @@ const Settings = (() => {
           ${inClaudeAi() ? `<p class="set-warn">Vous êtes dans claude.ai : il bloque toute connexion vers d'autres services, donc une autre IA ne peut pas fonctionner ici. Elle fonctionnera dans la version de Truby Studio hébergée hors de claude.ai (votre propre adresse).</p>` : ''}
           <div class="set-row"><label for="setPreset">Fournisseur</label><select class="in" id="setPreset">${PRESETS.map(p => `<option value="${p.id}" ${p.id === pr.id ? 'selected' : ''}>${p.name}</option>`).join('')}</select></div>
           <div class="set-row"><label for="setKey">Clé API</label><input class="in" id="setKey" type="password" autocomplete="off" value="${App.esc(draft.api.apiKey)}" placeholder="${pr.id === 'ollama' ? 'Aucune clé nécessaire' : 'Collez votre clé ici'}">${pr.keys ? `<a class="set-link" href="${pr.keys}" target="_blank" rel="noopener">Obtenir une clé</a>` : ''}</div>
-          <div class="set-row"><label for="setModel">Modèle</label>${models.length ? `<select class="in" id="setModel">${models.map(m => `<option value="${App.esc(m)}" ${m === draft.api.model ? 'selected' : ''}>${App.esc(m)}</option>`).join('')}</select>` : `<input class="in" id="setModel" value="${App.esc(draft.api.model)}" placeholder="Cliquez sur « Tester la connexion »">`}</div>
+          <div class="set-row"><label for="setModel">Modèle</label>${models.length ? `<select class="in" id="setModel">${models.map(m => `<option value="${App.esc(m)}" ${m === draft.api.model ? 'selected' : ''}>${App.esc(m)}</option>`).join('')}</select>` : `<div class="in model-ro">${App.esc(draft.api.model || 'Cliquez sur « Charger les modèles »')}</div><input type="hidden" id="setModel" value="${App.esc(draft.api.model)}">`}</div>
           <details class="set-adv" ${pr.id === 'custom' ? 'open' : ''}><summary>Adresse de l'API</summary><input class="in" id="setBase" value="${App.esc(draft.api.baseUrl)}" placeholder="https://…/v1"></details>
-          <div class="set-test-row"><button class="btn sm" data-set-test ${inClaudeAi() ? 'disabled title="Impossible depuis claude.ai"' : ''}>Tester la connexion</button><span class="set-test" id="setTest"></span></div>
+          <div class="set-test-row"><button class="btn sm" data-set-test ${inClaudeAi() ? 'disabled title="Impossible depuis claude.ai"' : ''}>Charger les modèles</button><span class="set-test" id="setTest"></span></div>
           <label class="check" style="margin-top:8px"><input type="checkbox" id="setRem" ${draft.api.remember ? 'checked' : ''}><span class="t">Mémoriser la clé dans ce navigateur</span></label>
         </div>
         <div ${draft.ai.provider === 'off' ? 'hidden' : ''}>
-          <div class="set-row"><label for="setEffort">Effort</label><select class="in" id="setEffort">${EFFORTS.map(([v, l]) => `<option value="${v}" ${draft.ai.effort === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
           <div class="set-row top"><label for="setExtra">Instructions envoyées à chaque requête</label><textarea class="in" id="setExtra" rows="3" placeholder="Ex. : Tutoie-moi. Mon film est un court métrage de 15 minutes.">${App.esc(draft.ai.extra)}</textarea></div>
           <p class="f-help">À chaque requête, l'IA reçoit automatiquement la méthode de Truby, l'état de votre projet et ces instructions.</p>
         </div>
@@ -298,7 +296,6 @@ const Settings = (() => {
     const read = back => {
       const v = id => back.querySelector('#' + id);
       if (v('setTier')) draft.ai.tier = v('setTier').value;
-      if (v('setEffort')) draft.ai.effort = v('setEffort').value;
       if (v('setExtra')) draft.ai.extra = v('setExtra').value.trim();
       if (v('setKey')) draft.api.apiKey = v('setKey').value.trim();
       if (v('setModel')) draft.api.model = v('setModel').value.trim();
@@ -314,6 +311,8 @@ const Settings = (() => {
         host.addEventListener('change', e => {
           if (e.target.id === 'setPreset') { read(back); const p = PRESETS.find(x => x.id === e.target.value); draft.api.preset = p.id; draft.api.baseUrl = p.base; draft.api.model = p.model; models = []; redraw(); }
         });
+        /* la liste des modèles se charge seule quand une clé est déjà enregistrée */
+        if (draft.ai.provider === 'api' && draft.api.apiKey && !inClaudeAi()) setTimeout(() => { const t = host.querySelector('[data-set-test]'); if (t) t.click(); }, 0);
         host.addEventListener('click', async e => {
           const b = e.target.closest('button'); if (!b) return; const d = b.dataset;
           if (d.setTab) { read(back); tab = d.setTab; redraw(); }
@@ -325,7 +324,7 @@ const Settings = (() => {
             try {
               models = await listModels(draft.api.baseUrl, draft.api.apiKey, draft.api.preset);
               const pr = PRESETS.find(x => x.id === draft.api.preset);
-              if (!draft.api.model || !models.includes(draft.api.model)) draft.api.model = pickModel(draft.api.preset, models, pr && pr.model) || draft.api.model;
+              if (!draft.api.model || !models.includes(draft.api.model) || /preview|exp|beta|alpha/i.test(draft.api.model)) draft.api.model = pickModel(draft.api.preset, models, pr && pr.model) || draft.api.model;
               redraw(); const o2 = back.querySelector('#setTest'); o2.textContent = `Connecté : ${models.length} modèle${models.length > 1 ? 's' : ''} disponible${models.length > 1 ? 's' : ''}.`; o2.className = 'set-test ok';
             } catch (er) { out.textContent = er.message; out.className = 'set-test bad'; }
           }

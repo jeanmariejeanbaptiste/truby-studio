@@ -572,3 +572,4 @@ body.is-home .tb-center { opacity: 0; pointer-events: none; }
 .profile-menu .pm-av { width: 36px; height: 36px; flex: none; display: grid; place-items: center; font-family: var(--font-display); font-size: 18px; color: var(--accent-fg); background: var(--accent); border-radius: 52% 48% 55% 45% / 47% 55% 45% 53%; }
 .profile-menu .pm-st { margin: 0; font-size: 13px; color: var(--fg-2); font-style: italic; }
 .profile-menu .btn { justify-content: center; }
+.model-ro { color: var(--fg-2); font-style: italic; background: var(--surface-2); cursor: default; }
